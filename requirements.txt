@@ -1,0 +1,25 @@
+# Core Framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+
+# HTTP Client
+httpx==0.25.2
+
+# Data Validation
+pydantic==2.5.0
+pydantic-core==2.14.1
+
+# Environment Variables
+python-dotenv==1.0.0
+
+# Rate Limiting (recommended for production)
+slowapi==0.1.9
+
+# Token Counting
+tiktoken==0.5.2
+
+# System Monitoring
+psutil==5.9.6
+
+# Web Search API
+ddgs
