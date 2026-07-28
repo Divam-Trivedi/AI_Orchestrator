@@ -508,11 +508,14 @@ async function loadConversations() {
     const groupsData = await groupsRes.json();
     const allGroups = groupsData.groups || [];
     const list = document.getElementById('history-list');
+    
     const grouped = {};
     const ungrouped = [];
+    
     allGroups.forEach(g => {
         grouped[g] = [];
     });
+    
     convs.forEach(c => {
         if (c.group_name && grouped[c.group_name]) {
             grouped[c.group_name].push(c);
@@ -520,12 +523,16 @@ async function loadConversations() {
             ungrouped.push(c);
         }
     });
+
     let html = '';
     Object.keys(grouped).sort().forEach(groupName => {
         const chats = grouped[groupName];
+        const isGroupActive = chats.some(c => c.id === currentConvId);
+        const activeClass = isGroupActive ? 'group-active' : '';
+
         html += `
             <div class="mt-3">
-                <div class="flex items-center justify-between px-2 py-1 text-xs font-bold text-slate-600 dark:text-slate-400">
+                <div class="flex items-center justify-between px-2 py-1 text-xs font-bold text-slate-600 dark:text-slate-400 ${activeClass}">
                     <div class="flex items-center gap-2 flex-1 cursor-pointer hover:bg-slate-200 dark:hover:bg-zinc-800 rounded px-1 py-1" onclick="showGroupChatList('${groupName}')">
                         <span id="group-toggle-${groupName}" class="cursor-pointer" onclick="event.stopPropagation(); toggleGroupArrow('${groupName}')">▶</span>
                         <span>${groupName}</span>
@@ -545,6 +552,7 @@ async function loadConversations() {
             </div>
         `;
     });
+
     if (ungrouped.length > 0) {
         html += '<div class="mt-2">';
         ungrouped.forEach(c => {
@@ -554,6 +562,7 @@ async function loadConversations() {
     }
     list.innerHTML = html;
 }
+
 
 function renderChatItem(c, isUngrouped = false) {
     const indent = isUngrouped ? '' : 'ml-4';
@@ -581,7 +590,7 @@ async function showGroupChatList(groupName) {
             </div>
             <div class="space-y-2">
                 <button onclick="createNewChatInGroup('${groupName}')" class="w-full p-3 rounded-lg border-2 border-dashed border-slate-300 dark:border-grayBorder hover:bg-slate-100 dark:hover:bg-zinc-900 font-bold text-sm mb-4">
-                    + Create New Chat
+                    + New Chat
                 </button>
                 
                 ${chatsInGroup.map(c => `
@@ -1292,11 +1301,17 @@ window.onload = async () => {
     document.addEventListener('click', (e) => {
         const contextModal = document.getElementById('context-modal');
         const promptDropdown = document.getElementById('system-prompt-dropdown');
+        const moreModal = document.getElementById('more-modal'); // Add this
+
         if (!e.target.closest('[onclick*="toggleContext"]') && !e.target.closest('#context-modal')) {
             contextModal.classList.add('hidden');
         }
         if (!e.target.closest('[onclick*="toggleSystemPrompt"]') && !e.target.closest('#system-prompt-dropdown')) {
             promptDropdown.classList.add('hidden');
+        }
+        // Close more-modal if clicking outside of it and not on the "More" button
+        if (!e.target.closest('[onclick*="toggleHub"]') && !e.target.closest('#more-modal')) {
+            moreModal.classList.add('hidden');
         }
     });
 };
@@ -1316,4 +1331,43 @@ document.getElementById('user-input').addEventListener('input', function() {
 async function createNewChatInGroup(groupName) {
     localStorage.setItem('nextChatGroup', groupName);
     newChat();
+}
+
+
+
+// ---------- More / Hub Modal ----------
+
+function toggleHub(open) {
+  const modal = document.getElementById('more-modal');
+  if (modal) {
+    if (open) {
+      modal.classList.remove('hidden');
+    } else {
+      modal.classList.add('hidden');
+    }
+  }
+}
+
+function openDocumentation() {
+  // Option A: Open a separate page (you’ll need to serve it from FastAPI)
+  window.open('/docs-page', '_blank');
+
+  // Option B: Show a simple alert or inline content
+  // alert('Documentation coming soon!');
+}
+
+function openVoiceChat() {
+  // Replace with your actual Voice Chat logic
+  alert('Voice Chat feature – integrate WebRTC or Speech API here.');
+  // Could open a sub-modal or navigate to /voice-chat
+}
+
+function openPlayground() {
+  // Open a playground overlay or redirect
+  window.location.href = '/playground';   // you would create this route
+}
+
+function openCodeGen() {
+  alert('Code generation – could open a dedicated modal');
+  // Or call a custom function that shows a code gen UI
 }

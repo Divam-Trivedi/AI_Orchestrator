@@ -184,7 +184,7 @@
                 <button id="stop-btn" onclick="stopGeneration()" class="hidden absolute right-14 bottom-3 p-2 bg-red-500 text-white rounded-lg hover:opacity-90 transition-opacity">⏹</button>
             </div>
         </div>
-        
+
     </main>
 
     <div id="settings-modal" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
@@ -200,6 +200,51 @@
             </div>
         </div>
     </div>
+
+    <!-- More / Hub Modal -->
+    <div id="more-modal" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
+    <div class="bg-white dark:bg-grayPanel p-8 rounded-2xl w-full max-w-lg border border-slate-200 dark:border-grayBorder shadow-2xl">
+        <div class="flex justify-between items-center mb-6">
+        <h2 class="text-2xl font-bold">Explore Features</h2>
+        <button onclick="toggleHub(false)" class="text-2xl leading-none hover:text-accent">&times;</button>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+        <!-- Documentation -->
+        <button onclick="openDocumentation()" class="flex flex-col items-center gap-3 p-6 bg-slate-100 dark:bg-zinc-800 rounded-xl hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors">
+            <span class="text-3xl">📚</span>
+            <span class="text-sm font-bold">Documentation</span>
+            <span class="text-xs opacity-60">Learn more</span>
+        </button>
+
+        <!-- Voice Chat -->
+        <button onclick="openVoiceChat()" class="flex flex-col items-center gap-3 p-6 bg-slate-100 dark:bg-zinc-800 rounded-xl hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors">
+            <span class="text-3xl">🎤</span>
+            <span class="text-sm font-bold">Voice Chat</span>
+            <span class="text-xs opacity-60">Speak & listen</span>
+        </button>
+
+        <!-- Playground -->
+        <button onclick="openPlayground()" class="flex flex-col items-center gap-3 p-6 bg-slate-100 dark:bg-zinc-800 rounded-xl hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors">
+            <span class="text-3xl">🧪</span>
+            <span class="text-sm font-bold">Playground</span>
+            <span class="text-xs opacity-60">Test prompts</span>
+        </button>
+
+        <!-- Code Generator -->
+        <button onclick="openCodeGen()" class="flex flex-col items-center gap-3 p-6 bg-slate-100 dark:bg-zinc-800 rounded-xl hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors">
+            <span class="text-3xl">💻</span>
+            <span class="text-sm font-bold">Code Gen</span>
+            <span class="text-xs opacity-60">Generate snippets</span>
+        </button>
+        </div>
+
+        <div class="mt-6 text-center text-xs opacity-50">
+        More features coming soon 🚀
+        </div>
+    </div>
+    </div>
+
 
     <!-- Your custom logic script -->
     <script src="/static/script.js"></script>
