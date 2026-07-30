@@ -104,3 +104,14 @@ pre {
 .dark .mic-dropdown button.selected {
     background: #2d2d2d;
 }
+
+.msg-action-btn {
+    transition: all 0.2s;
+    cursor: pointer;
+    user-select: none;
+}
+
+.msg-action-btn:hover {
+    transform: scale(1.1);
+    opacity: 1 !important;
+}

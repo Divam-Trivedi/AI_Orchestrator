@@ -302,6 +302,49 @@ function cleanupMedia() {
     clearTimeout(silenceTimeout);
 }
 
+function speakMessage(elementId) {
+    const contentDiv = document.getElementById(elementId);
+    if (!contentDiv) return;
+
+    // 1. Handle already speaking (Stop if clicked again)
+    if (window.speechSynthesis.speaking) {
+        window.speechSynthesis.cancel();
+        updateSpeakButtonIcon(elementId, '🔊');
+        return;
+    }
+
+    // 2. Get text content (ignoring thinking blocks)
+    const text = contentDiv.innerText;
+    if (!text) return;
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    
+    // Optional: Customize voice
+    utterance.rate = 1.0; // Speed
+    utterance.pitch = 1.0; // Tone
+    
+    // Set the global reference so we can stop it
+    currentSpeechUtterance = utterance;
+
+    // UI Update: Change icon to "Stop" while speaking
+    updateSpeakButtonIcon(elementId, '⏹️');
+
+    utterance.onend = () => {
+        updateSpeakButtonIcon(elementId, '🔊');
+    };
+
+    utterance.onerror = () => {
+        updateSpeakButtonIcon(elementId, '🔊');
+    };
+
+    window.speechSynthesis.speak(utterance);
+}
+
+function updateSpeakButtonIcon(elementId, icon) {
+    const btn = document.getElementById(`speak-btn-${elementId}`);
+    if (btn) btn.textContent = icon;
+}
+
 window.addEventListener('load', () => {
     initMic();
 });

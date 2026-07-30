@@ -18,6 +18,7 @@ let audioChunks = [];
 let silenceTimeout = null;
 let silenceThreshold = -50;     // dBFS, adjust if needed
 let isRecording = false;
+let currentSpeechUtterance = null;
 
 
 function toggleSidebar() {
@@ -947,7 +948,7 @@ function appendMessage(role, content) {
     let finalContent = content;
     
     if (role === 'assistant') {
-        const thinkingMatch = content.match(/<thinking>([\s\S]*?)<\/thinking>/);
+        const thinkingMatch = content.match(/<thinking>([\s\्स]*?)<\/thinking>/);
         thinking = thinkingMatch ? thinkingMatch[1].trim() : null;
         finalContent = content.replace(/<thinking>[\s\S]*?<\/thinking>/, '').trim();
     }
@@ -955,6 +956,7 @@ function appendMessage(role, content) {
     div.innerHTML = `
         <div class="max-w-3xl p-4 rounded-2xl ${role === 'user' ? 'bg-slate-200 dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100' : 'bg-slate-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100'} group relative">
             <div class="text-xs opacity-70 mb-1 font-bold">${role.toUpperCase()}</div>
+            
             ${thinking && role === 'assistant' ? `
             <div class="mb-3 p-2 rounded bg-slate-200/50 dark:bg-zinc-900/50 border-l-2 border-blue-500">
                 <button onclick="toggleThinking(this)" class="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline">▼ Thinking</button>
@@ -963,8 +965,16 @@ function appendMessage(role, content) {
                 </div>
             </div>
             ` : ''}
+
             <div id="${messageId}" class="markdown-content prose prose-slate dark:prose-invert max-w-none">${finalContent}</div>
-            <button onclick="copyToClipboard('${messageId}')" class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-xs px-2 py-1 rounded bg-black/20 hover:bg-black/40 transition-opacity">Copy</button>
+            
+            <!-- Action Buttons: Always visible for assistant, hidden by default, shown on group hover -->
+            <div class="absolute top-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                ${role === 'assistant' ? 
+                    `<button id="speak-btn-${messageId}" onclick="speakMessage('${messageId}')" class="msg-action-btn text-xs px-2 py-1 rounded bg-black/20 hover:bg-black/40">🔊</button>` : '' 
+                }
+                <button onclick="copyToClipboard('${messageId}')" class="msg-action-btn text-xs px-2 py-1 rounded bg-black/20 hover:bg-black/40">Copy</button>
+            </div>
         </div>
     `;
     container.appendChild(div);
@@ -973,6 +983,7 @@ function appendMessage(role, content) {
     const contentDiv = div.querySelector(`#${messageId}`);
     return {element: div, contentDiv: contentDiv, finalContent: finalContent};
 }
+
 
 function toggleThinking(button) {
     const content = button.parentElement.querySelector('.thinking-content');
