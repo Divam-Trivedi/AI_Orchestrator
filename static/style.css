@@ -34,3 +34,73 @@ pre {
     background-color: rgba(59, 130, 246, 0.2) !important;
     color: #60a5fa !important;
 }
+
+/* ---------- Mic button states ---------- */
+#mic-btn.recording {
+    color: #ef4444;
+    animation: mic-pulse 1.5s infinite;
+}
+
+@keyframes mic-pulse {
+    0% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.15); opacity: 0.8; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+#mic-btn.processing {
+    color: #f59e0b;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.mic-dropdown {
+    position: absolute;
+    bottom: 100%;
+    right: 0;
+    margin-bottom: 8px;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    z-index: 1000;
+    min-width: 180px;
+    display: none;
+}
+
+.dark .mic-dropdown {
+    background: #1a1a1a;
+    border-color: #333;
+}
+
+.mic-dropdown button {
+    display: block;
+    width: 100%;
+    padding: 8px 12px;
+    text-align: left;
+    font-size: 0.875rem;
+    background: none;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+}
+
+.mic-dropdown button:hover {
+    background: #f1f5f9;
+}
+
+.dark .mic-dropdown button:hover {
+    background: #262626;
+}
+
+.mic-dropdown button.selected {
+    font-weight: bold;
+    background: #e2e8f0;
+}
+
+.dark .mic-dropdown button.selected {
+    background: #2d2d2d;
+}

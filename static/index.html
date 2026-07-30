@@ -177,6 +177,12 @@
             <div class="max-w-4xl mx-auto relative">
                 <textarea id="user-input" rows="1" class="w-full p-4 pr-12 rounded-xl border border-slate-200 dark:border-grayBorder bg-slate-50 dark:bg-zinc-900 focus:ring-2 focus:ring-white outline-none resize-none custom-scrollbar max-h-48 overflow-y-auto" placeholder="Ask anything..." ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)"></textarea>
                 <input type="file" id="file-input" class="hidden" accept=".md,.txt,.pdf,.jpg,.jpeg,.png,.gif,.webp" onchange="handleFileUpload(event)">
+                <button id="mic-btn" class="absolute right-20 bottom-3 p-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
+                        oncontextmenu="event.preventDefault(); toggleMicDropdown(event)"
+                        onclick="handleMicClick()"
+                        title="Voice input (right-click to change STT method)">
+                    🎤
+                </button>
                 <button onclick="document.getElementById('file-input').click()" class="absolute right-12 bottom-3 p-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">📎</button>
                 <button id="send-btn" onclick="sendMessage()" class="absolute right-3 bottom-3 p-2 bg-accent text-accentText rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed">
                     <span id="btn-icon">↑</span>
@@ -210,33 +216,33 @@
         </div>
 
         <div class="grid grid-cols-2 gap-4">
-        <!-- Documentation -->
-        <button onclick="openDocumentation()" class="flex flex-col items-center gap-3 p-6 bg-slate-100 dark:bg-zinc-800 rounded-xl hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors">
-            <span class="text-3xl">📚</span>
-            <span class="text-sm font-bold">Documentation</span>
-            <span class="text-xs opacity-60">Learn more</span>
-        </button>
+            <!-- Documentation -->
+            <button onclick="navigateToModule('documentation', event)" class="flex flex-col items-center gap-3 p-6 bg-slate-100 dark:bg-zinc-800 rounded-xl hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors">
+                <span class="text-3xl">📚</span>
+                <span class="text-sm font-bold">Documentation</span>
+                <span class="text-xs opacity-60">Learn more</span>
+            </button>
 
-        <!-- Voice Chat -->
-        <button onclick="openVoiceChat()" class="flex flex-col items-center gap-3 p-6 bg-slate-100 dark:bg-zinc-800 rounded-xl hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors">
-            <span class="text-3xl">🎤</span>
-            <span class="text-sm font-bold">Voice Chat</span>
-            <span class="text-xs opacity-60">Speak & listen</span>
-        </button>
+            <!-- Voice Chat -->
+            <button onclick="navigateToModule('voice-chat', event)" class="flex flex-col items-center gap-3 p-6 bg-slate-100 dark:bg-zinc-800 rounded-xl hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors">
+                <span class="text-3xl">🎤</span>
+                <span class="text-sm font-bold">Voice Chat</span>
+                <span class="text-xs opacity-60">Speak & listen</span>
+            </button>
 
-        <!-- Playground -->
-        <button onclick="openPlayground()" class="flex flex-col items-center gap-3 p-6 bg-slate-100 dark:bg-zinc-800 rounded-xl hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors">
-            <span class="text-3xl">🧪</span>
-            <span class="text-sm font-bold">Playground</span>
-            <span class="text-xs opacity-60">Test prompts</span>
-        </button>
+            <!-- Playground -->
+            <button onclick="navigateToModule('playground', event)" class="flex flex-col items-center gap-3 p-6 bg-slate-100 dark:bg-zinc-800 rounded-xl hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors">
+                <span class="text-3xl">🧪</span>
+                <span class="text-sm font-bold">Playground</span>
+                <span class="text-xs opacity-60">Test prompts</span>
+            </button>
 
-        <!-- Code Generator -->
-        <button onclick="openCodeGen()" class="flex flex-col items-center gap-3 p-6 bg-slate-100 dark:bg-zinc-800 rounded-xl hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors">
-            <span class="text-3xl">💻</span>
-            <span class="text-sm font-bold">Code Gen</span>
-            <span class="text-xs opacity-60">Generate snippets</span>
-        </button>
+            <!-- Code Generator -->
+            <button onclick="navigateToModule('code-gen', event)" class="flex flex-col items-center gap-3 p-6 bg-slate-100 dark:bg-zinc-800 rounded-xl hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors">
+                <span class="text-3xl">💻</span>
+                <span class="text-sm font-bold">Code Gen</span>
+                <span class="text-xs opacity-60">Generate snippets</span>
+            </button>
         </div>
 
         <div class="mt-6 text-center text-xs opacity-50">
@@ -248,5 +254,6 @@
 
     <!-- Your custom logic script -->
     <script src="/static/script.js"></script>
+    <script src="/static/SpeechToText.js"></script>
 </body>
 </html>

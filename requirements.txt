@@ -23,3 +23,6 @@ psutil==5.9.6
 
 # Web Search API
 ddgs
+
+# STT
+python-multipart

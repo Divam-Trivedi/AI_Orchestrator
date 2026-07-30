@@ -10,6 +10,15 @@ let currentSystemPrompt = null;
 let allSystemPrompts = [];
 let webSearchEnabled = false;
 let uploadedImages = [];
+let sttMethod = null;
+let availableSTTMethods = [];
+let micRecorder = null;
+let mediaStream = null;
+let audioChunks = [];
+let silenceTimeout = null;
+let silenceThreshold = -50;     // dBFS, adjust if needed
+let isRecording = false;
+
 
 function toggleSidebar() {
     const sidebar = document.getElementById('sidebar');
@@ -446,6 +455,11 @@ function addProviderRow(data = {provider: 'OpenAI', api_key: '', models: [], max
                 <input type="number" min="256" max="10000" value="${data.max_tokens}" class="prov-tokens-input w-20 p-2 rounded bg-white dark:bg-black border border-slate-300 dark:border-grayBorder text-sm outline-none" oninput="syncTokenSlider(this)">
             </div>
         </div>
+        <div class="mt-4">
+            <label class="block text-[10px] uppercase opacity-50 mb-1">Voice Models (comma separated)</label>
+            <input type="text" value="${data.voice_models ? data.voice_models.join(', ') : ''}" placeholder="whisper-1" class="prov-voice-models w-full p-2 rounded bg-white dark:bg-black border border-slate-300 dark:border-grayBorder text-sm outline-none">
+        </div>
+
     `;
     container.appendChild(div);
 }
@@ -482,6 +496,7 @@ async function saveAllSettings() {
             provider: row.querySelector('.prov-type').value,
             api_key: row.querySelector('.prov-key').value,
             models: row.querySelector('.prov-models').value.split(',').map(s => s.trim()).filter(s => s),
+            voice_models: row.querySelector('.prov-voice-models').value.split(',').map(s => s.trim()).filter(s => s),
             max_tokens: parseInt(row.querySelector('.prov-tokens-input').value) || 4096
         });
     });
@@ -1268,54 +1283,6 @@ async function sendMessage() {
     }
 }
 
-window.onload = async () => {
-    if (sidebarCollapsed) {
-        document.getElementById('sidebar').style.width = '0';
-        document.getElementById('sidebar').style.overflow = 'hidden';
-    }
-
-    await loadSystemPrompts();
-    await refreshModelDropdown();
-
-    if (currentConvId) {
-    await selectConversation(currentConvId);
-    } else {
-    // No saved conversation – try loading the latest one
-    const convs = await (await fetch('/conversations')).json();
-    if (convs.length > 0) {
-        // Sort by date (make sure your API returns a date field)
-        const latest = convs.reduce((prev, curr) =>
-        new Date(curr.updated_at) > new Date(prev.updated_at) ? curr : prev
-        );
-        currentConvId = latest.id;
-        localStorage.setItem('last_conversation_id', latest.id);
-        await selectConversation(latest.id);
-    } else {
-        // Truly no chats yet
-        newChat();
-    }
-    }
-    
-    await loadConversations();
-    
-    document.addEventListener('click', (e) => {
-        const contextModal = document.getElementById('context-modal');
-        const promptDropdown = document.getElementById('system-prompt-dropdown');
-        const moreModal = document.getElementById('more-modal'); // Add this
-
-        if (!e.target.closest('[onclick*="toggleContext"]') && !e.target.closest('#context-modal')) {
-            contextModal.classList.add('hidden');
-        }
-        if (!e.target.closest('[onclick*="toggleSystemPrompt"]') && !e.target.closest('#system-prompt-dropdown')) {
-            promptDropdown.classList.add('hidden');
-        }
-        // Close more-modal if clicking outside of it and not on the "More" button
-        if (!e.target.closest('[onclick*="toggleHub"]') && !e.target.closest('#more-modal')) {
-            moreModal.classList.add('hidden');
-        }
-    });
-};
-
 document.getElementById('user-input').addEventListener('keydown', function(e) {
     if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
@@ -1348,26 +1315,91 @@ function toggleHub(open) {
   }
 }
 
-function openDocumentation() {
-  // Option A: Open a separate page (you’ll need to serve it from FastAPI)
-  window.open('/docs-page', '_blank');
+// 1. Define your modules here. 
+// 'url' is for new pages, 'action' is for internal JS functions (like opening a modal)
+const AppModules = {
+    "documentation": { 
+        url: "/documentation", 
+        label: "Documentation", 
+        icon: "📚" 
+    },
+    "voice-chat": { 
+        url: "/voice", 
+        label: "Voice Chat", 
+        icon: "🎤" 
+    },
+    "playground": { 
+        url: "/playground", 
+        label: "Playground", 
+        icon: "🧪" 
+    },
+    "code-gen": { 
+        url: "/codegen", 
+        label: "Code Generator", 
+        icon: "💻" 
+    }
+};
 
-  // Option B: Show a simple alert or inline content
-  // alert('Documentation coming soon!');
+function navigateToModule(moduleId, event) {
+    const module = AppModules[moduleId];
+    if (!module) {
+        console.error(`Module ${moduleId} not found in registry.`);
+        return;
+    }
+
+    const isNewTabRequested = event.ctrlKey || event.metaKey;
+
+    if (isNewTabRequested) {
+        window.open(module.url, '_blank');
+    } else {
+        window.location.href = module.url;
+    }
 }
 
-function openVoiceChat() {
-  // Replace with your actual Voice Chat logic
-  alert('Voice Chat feature – integrate WebRTC or Speech API here.');
-  // Could open a sub-modal or navigate to /voice-chat
-}
 
-function openPlayground() {
-  // Open a playground overlay or redirect
-  window.location.href = '/playground';   // you would create this route
-}
+window.onload = async () => {
+    if (sidebarCollapsed) {
+        document.getElementById('sidebar').style.width = '0';
+        document.getElementById('sidebar').style.overflow = 'hidden';
+    }
 
-function openCodeGen() {
-  alert('Code generation – could open a dedicated modal');
-  // Or call a custom function that shows a code gen UI
-}
+    await loadSystemPrompts();
+    await refreshModelDropdown();
+
+    if (currentConvId) {
+    await selectConversation(currentConvId);
+    } else {
+    // No saved conversation – try loading the latest one
+    const convs = await (await fetch('/conversations')).json();
+    if (convs.length > 0) {
+        const latest = convs.reduce((prev, curr) =>
+        new Date(curr.updated_at) > new Date(prev.updated_at) ? curr : prev
+        );
+        currentConvId = latest.id;
+        localStorage.setItem('last_conversation_id', latest.id);
+        await selectConversation(latest.id);
+    } else {
+        newChat();
+    }
+    }
+    
+    await loadConversations();
+    await initMic();
+    
+    document.addEventListener('click', (e) => {
+        const contextModal = document.getElementById('context-modal');
+        const promptDropdown = document.getElementById('system-prompt-dropdown');
+        const moreModal = document.getElementById('more-modal'); // Add this
+
+        if (!e.target.closest('[onclick*="toggleContext"]') && !e.target.closest('#context-modal')) {
+            contextModal.classList.add('hidden');
+        }
+        if (!e.target.closest('[onclick*="toggleSystemPrompt"]') && !e.target.closest('#system-prompt-dropdown')) {
+            promptDropdown.classList.add('hidden');
+        }
+        // Close more-modal if clicking outside of it and not on the "More" button
+        if (!e.target.closest('[onclick*="toggleHub"]') && !e.target.closest('#more-modal')) {
+            moreModal.classList.add('hidden');
+        }
+    });
+};

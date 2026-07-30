@@ -666,3 +666,47 @@ def get_provider(provider_name: str) -> BaseProvider:
     """Get a provider instance from the pool."""
     pool = ProviderPool()
     return pool.get(provider_name)
+
+# ============ Transcription Support ============
+async def transcribe_audio_openai(model: str, audio_bytes: bytes, filename: str, api_key: str) -> str:
+    """
+    Transcribe audio using OpenAI Whisper API.
+    Args:
+        model: Whisper model (e.g., 'whisper-1')
+        audio_bytes: Raw audio file contents
+        filename: Original filename (for Content-Disposition)
+        api_key: OpenAI API key
+    Returns:
+        Transcribed text
+    """
+    url = "https://api.openai.com/v1/audio/transcriptions"
+    
+    # Determine content type from filename or default
+    if filename:
+        ext = filename.rsplit('.', 1)[-1].lower()
+        content_type_map = {
+            'mp3': 'audio/mpeg',
+            'wav': 'audio/wav',
+            'webm': 'audio/webm',
+            'ogg': 'audio/ogg',
+            'flac': 'audio/flac',
+            'm4a': 'audio/mp4'
+        }
+        content_type = content_type_map.get(ext, 'audio/webm')
+    else:
+        content_type = 'audio/webm'  # default for browser recordings
+
+    files = {
+        'file': (filename or 'recording.webm', audio_bytes, content_type),
+        'model': (None, model)
+    }
+    headers = {'Authorization': f'Bearer {api_key}'}
+    
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post(url, headers=headers, files=files)
+        if resp.status_code != 200:
+            error_text = resp.text
+            logger.error(f"OpenAI transcription failed: {resp.status_code} - {error_text}")
+            raise APIError(f"Transcription failed: {error_text}")
+        data = resp.json()
+        return data.get('text', '').strip()

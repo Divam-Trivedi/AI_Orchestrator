@@ -1,7 +1,7 @@
 import os
 import os
 import sqlite3
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Form, File, UploadFile
 from fastapi.responses import StreamingResponse, HTMLResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -84,15 +84,19 @@ class ProviderConfig(BaseModel):
     provider: str = Field(..., pattern="^(OpenAI|Anthropic|Ollama|DeepSeek|Gemini)$")
     api_key: str = Field(default="", min_length=0)
     models: List[str] = Field(..., min_items=1)
+    voice_models: List[str] = Field(default=[], min_items=0)
     max_tokens: int = Field(default=4096, ge=256, le=128000)
     
     @field_validator('api_key')
     @classmethod
     def validate_api_key(cls, v, info):
-        """Validate API key based on provider"""
         provider = info.data.get('provider')
         if provider in ['OpenAI', 'Anthropic', 'DeepSeek', 'Gemini'] and not v:
-            raise ValueError(f"{provider} requires an API key")
+            # Only require API key if either models or voice_models is non‑empty
+            has_models = len(info.data.get('models', [])) > 0
+            has_voice = len(info.data.get('voice_models', [])) > 0
+            if has_models or has_voice:
+                raise ValueError(f"{provider} requires an API key")
         return v
 
 # ============ Request/Response Models ============
@@ -805,6 +809,74 @@ async def get_conversation_tokens(conversation_id: str):
     except Exception as e:
         logger.error(f"Error retrieving tokens for {conversation_id}: {e}")
         raise HTTPException(status_code=500, detail="Error retrieving token data")
+
+# ============ Voice Transcription ============
+
+@app.get("/voice-models")
+async def get_voice_models():
+    try:
+        config_str = db.get_setting("provider_configs")
+        print(f"DEBUG: Raw Config String: {config_str}")
+        if not config_str:
+            return []
+        configs = json.loads(config_str)
+        voice_models = []
+        for p in configs:
+            print(f"DEBUG: Processing provider: {p.get('provider')}")
+            # We check if 'voice_models' key exists in the JSON
+            for vm in p.get('voice_models', []):
+                voice_models.append({"model": vm, "provider": p['provider']})
+        print(f"DEBUG: Final Voice Model List: {voice_models}")
+        return voice_models
+    except Exception as e:
+        logger.error(f"Error listing voice models: {e}")
+        raise HTTPException(status_code=500, detail="Error listing voice models")
+
+@app.post("/voice/transcribe")
+async def transcribe_audio(model: str = Form(...), audio: UploadFile = File(...)):
+    try:
+        config_str = db.get_setting("provider_configs")
+        if not config_str:
+            raise HTTPException(status_code=400, detail="No providers configured")
+        configs = json.loads(config_str)
+        provider_config = next((p for p in configs if model in p.get('voice_models', [])), None)
+        if not provider_config:
+            raise HTTPException(status_code=404, detail="Voice model not found")
+        
+        provider_name = provider_config['provider']
+        api_key = provider_config.get('api_key', '')
+        
+        if provider_name != 'OpenAI':
+            raise HTTPException(status_code=501, detail="Only OpenAI Whisper is currently supported")
+        
+        audio_bytes = await audio.read()
+        from providers import transcribe_audio_openai
+        text = await transcribe_audio_openai(model, audio_bytes, audio.filename, api_key)
+        return {"text": text}
+    except Exception as e:
+        logger.error(f"Transcription error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/{module_name}")
+async def serve_module(module_name: str):
+    """
+    Dynamically serve HTML files based on the module name.
+    Example: /playground -> serves static/playground.html
+    """
+    module_files = {
+        "documentation": "static/documentation.html",
+        "voice": "static/voice.html",
+        "playground": "static/playground.html",
+        "codegen": "static/codegen.html"
+    }
+    
+    file_path = module_files.get(module_name)
+    if file_path and os.path.exists(file_path):
+        return FileResponse(file_path)
+    
+    # If the module doesn't exist, return 404 or redirect to home
+    raise HTTPException(status_code=404, detail="Module page not found")
 
 # ============ Run Application ============
 
