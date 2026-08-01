@@ -164,6 +164,7 @@ function startSilenceDetection(stream) {
         if (db < silenceThreshold) {
             // silence
             const now = Date.now();
+            console.log('Silence detected, dB:', db.toFixed(2) + ', time since last sound:', (now - lastSoundTime) + 'ms');
             if (now - lastSoundTime > SILENCE_DURATION && isRecording) {
                 // trigger stop
                 if (micRecorder && micRecorder.state === 'recording') {

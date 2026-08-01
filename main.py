@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 # Initialize FastAPI app
 app = FastAPI(title="AI Orchestrator")
 app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/assets", StaticFiles(directory="assets"), name="assets")
 
 # CORS configuration - restrict to specific origins
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:8000,http://localhost:3000").split(",")
@@ -806,3 +807,5 @@ if __name__ == "__main__":
     
     logger.info(f"Starting server on {host}:{port}")
     uvicorn.run(app, host=host, port=port)
+
+    

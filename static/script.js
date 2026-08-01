@@ -1340,10 +1340,10 @@ function toggleHub(open) {
 }
 
 const AppModules = {
-    "documentation": { url: "/documentation", label: "Documentation", icon: "📚" },
-    "voice-chat":    { url: "/voice",         label: "Voice Chat",   icon: "🎤" },
-    "playground":    { url: "/playground",    label: "Playground",   icon: "🧪" },
-    "code-gen":      { url: "/codegen",       label: "Code Gen",     icon: "💻" }
+    "documentation": { url: "/documentation", label: "Documentation", icon: "/assets/icons_document.svg" },
+    "voice-chat":    { url: "/voice",         label: "Voice Chat",   icon: "/assets/icons_voice.png" },
+    "playground":    { url: "/playground",    label: "Playground",   icon: "/assets/icons_playground.svg" },
+    "code-gen":      { url: "/codegen",       label: "Code Gen",     icon: "/assets/icons_code.svg" }
 };
 
 function navigateToModule(moduleId, event) {
