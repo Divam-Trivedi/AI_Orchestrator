@@ -6,7 +6,7 @@ let contextMode = 'all';
 let contextParamM = 0;
 let contextParamN = 10;
 let contextPreviewActive = false;
-let currentSystemPrompt = null;
+let currentSystemPrompt = localStorage.getItem('activeSystemPrompt') || null;
 let allSystemPrompts = [];
 let webSearchEnabled = false;
 let uploadedImages = [];
@@ -16,17 +16,20 @@ let micRecorder = null;
 let mediaStream = null;
 let audioChunks = [];
 let silenceTimeout = null;
-let silenceThreshold = -50;     // dBFS, adjust if needed
+let silenceThreshold = -50;
 let isRecording = false;
 let currentSpeechUtterance = null;
 
-
 function toggleSidebar() {
     const sidebar = document.getElementById('sidebar');
-    sidebarCollapsed = !sidebarCollapsed;
-    sidebar.style.width = sidebarCollapsed ? '0' : '16rem';
-    sidebar.style.overflow = sidebarCollapsed ? 'hidden' : 'auto';
-    localStorage.setItem('sidebarCollapsed', sidebarCollapsed);
+    if (window.innerWidth < 1024) {
+        sidebar.classList.toggle('open');
+    } else {
+        sidebarCollapsed = !sidebarCollapsed;
+        sidebar.style.width = sidebarCollapsed ? '0' : '16rem';
+        sidebar.style.overflow = sidebarCollapsed ? 'hidden' : 'auto';
+        localStorage.setItem('sidebarCollapsed', sidebarCollapsed);
+    }
 }
 
 function toggleContextWindow(show) {
@@ -128,9 +131,8 @@ function clearContextHighlight() {
 function toggleWebSearch() {
     webSearchEnabled = !webSearchEnabled;
     const btn = document.getElementById('web-search-btn');
+    btn.classList.toggle('active', webSearchEnabled);
     btn.classList.toggle('opacity-50', !webSearchEnabled);
-    btn.classList.toggle('opacity-100', webSearchEnabled);
-    btn.style.color = webSearchEnabled ? '#3b82f6' : 'inherit';
 }
 
 async function updateTokenCounter() {
@@ -155,17 +157,10 @@ async function updateTokenCounter() {
 
         if (total === 0) return;
 
-        //Bright Palette
-        // const colorShades = [
-        //     '#3B82F6', '#8B5CF6', '#EC4899', '#F97316', '#EAB308',
-        //     '#10B981', '#06B6D4', '#0EA5E9', '#6366F1', '#D946EF', '#14B8A6'
-        // ];
-
         const colorShades = [
             '#4B5563', '#5A6B7F', '#6B7A8F', '#7A899F', '#8998AF',
             '#64748B', '#475569', '#334155', '#1E293B', '#0F172A', '#71717A'
         ];
-
 
         const getModelColor = (modelName) => {
             let hash = 0;
@@ -184,7 +179,6 @@ async function updateTokenCounter() {
             seg.style.backgroundColor = getModelColor(model);
             seg.setAttribute('data-tooltip', `${model}: ${tokens.toLocaleString()} tokens`);
             
-            // Add hover listeners for tooltip
             seg.addEventListener('mouseenter', (e) => {
                 showTokenTooltip(e, seg);
             });
@@ -198,15 +192,13 @@ async function updateTokenCounter() {
         console.error('Error updating token counter:', err);
     }
 }
-// Global tooltip element
+
 let tokenTooltip = null;
 let tokenArrow = null;
 
 function showTokenTooltip(event, segment) {
     const text = segment.getAttribute('data-tooltip');
-    console.log('Tooltip triggered:', text); // DEBUG
     
-    // Create tooltip if doesn't exist
     if (!tokenTooltip) {
         tokenTooltip = document.createElement('div');
         tokenTooltip.style.cssText = `
@@ -224,10 +216,8 @@ function showTokenTooltip(event, segment) {
             pointer-events: none;
         `;
         document.body.appendChild(tokenTooltip);
-        console.log('Tooltip element created'); // DEBUG
     }
     
-    // Create arrow if doesn't exist
     if (!tokenArrow) {
         tokenArrow = document.createElement('div');
         tokenArrow.style.cssText = `
@@ -240,13 +230,11 @@ function showTokenTooltip(event, segment) {
             pointer-events: none;
         `;
         document.body.appendChild(tokenArrow);
-        console.log('Arrow element created'); // DEBUG
     }
     
-    // Update content and position
     tokenTooltip.textContent = text;
-    tokenTooltip.style.display = 'block'; // IMPORTANT: Show it
-    tokenArrow.style.display = 'block';   // IMPORTANT: Show it
+    tokenTooltip.style.display = 'block';
+    tokenArrow.style.display = 'block';
     
     const rect = segment.getBoundingClientRect();
     const barRect = segment.parentElement.getBoundingClientRect();
@@ -260,16 +248,12 @@ function showTokenTooltip(event, segment) {
     tokenArrow.style.left = tooltipLeft + 'px';
     tokenArrow.style.top = '44px';
     tokenArrow.style.transform = 'translateX(-50%)';
-    
-    console.log('Tooltip positioned at:', tooltipLeft, '50px'); // DEBUG
 }
 
 function hideTokenTooltip() {
     if (tokenTooltip) tokenTooltip.style.display = 'none';
     if (tokenArrow) tokenArrow.style.display = 'none';
 }
-
-
 
 setInterval(updateTokenCounter, 1000);
 
@@ -343,7 +327,8 @@ function renderSystemPromptList() {
 
 function selectSystemPrompt(name) {
     currentSystemPrompt = name;
-    document.getElementById('system-prompt-btn').textContent = `Behavior: ${name}`;
+    localStorage.setItem('activeSystemPrompt', name);
+    document.getElementById('system-prompt-btn').textContent = name ? `Behavior: ${name}` : 'Default';
     document.getElementById('system-prompt-dropdown').classList.add('hidden');
     renderSystemPromptList();
 }
@@ -368,13 +353,17 @@ async function saveCustomPrompt() {
         return;
     }
     try {
-        const params = new URLSearchParams({name, category, content});
-        const res = await fetch(`/system-prompts?${params}`, {method: 'POST'});
+        const res = await fetch('/system-prompts', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name, category, content})
+        });
         if (res.ok) {
             closeCustomPromptModal();
             loadSystemPrompts();
         } else {
-            alert('Error saving custom prompt');
+            const err = await res.json();
+            alert(err.detail || 'Error saving custom prompt');
         }
     } catch (error) {
         console.error('Error saving custom prompt:', error);
@@ -395,6 +384,7 @@ async function deleteSystemPrompt(name) {
         if (res.ok) {
             if (currentSystemPrompt === name) {
                 currentSystemPrompt = null;
+                localStorage.removeItem('activeSystemPrompt');
                 document.getElementById('system-prompt-btn').textContent = 'Default';
             }
             loadSystemPrompts();
@@ -460,7 +450,6 @@ function addProviderRow(data = {provider: 'OpenAI', api_key: '', models: [], max
             <label class="block text-[10px] uppercase opacity-50 mb-1">Voice Models (comma separated)</label>
             <input type="text" value="${data.voice_models ? data.voice_models.join(', ') : ''}" placeholder="whisper-1" class="prov-voice-models w-full p-2 rounded bg-white dark:bg-black border border-slate-300 dark:border-grayBorder text-sm outline-none">
         </div>
-
     `;
     container.appendChild(div);
 }
@@ -579,13 +568,15 @@ async function loadConversations() {
     list.innerHTML = html;
 }
 
-
 function renderChatItem(c, isUngrouped = false) {
     const indent = isUngrouped ? '' : 'ml-4';
+    // Escape the chat name to prevent XSS and garbled text
+    const safeName = document.createElement('div');
+    safeName.textContent = c.name;
     return `
         <div class="group relative flex items-center justify-between p-2 text-sm rounded-lg cursor-pointer hover:bg-slate-200 dark:hover:bg-zinc-800 truncate ${indent} ${currentConvId === c.id ? 'bg-slate-200 dark:bg-zinc-800 font-bold' : ''}">
             <div onclick="selectConversation('${c.id}')" class="truncate pr-6 flex-1">
-                ${c.name}
+                ${safeName.innerHTML}
             </div>
             <button onclick="showMoveMenu(event, '${c.id}', '${c.group_name || ''}')" class="absolute right-2 opacity-0 group-hover:opacity-100 text-slate-500 hover:text-slate-700 text-xs">⋯</button>
         </div>
@@ -609,12 +600,13 @@ async function showGroupChatList(groupName) {
                     + New Chat
                 </button>
                 
-                ${chatsInGroup.map(c => `
+                ${chatsInGroup.map(c => {
+                    const safeName = document.createElement('div');
+                    safeName.textContent = c.name;
+                    return `
                     <div class="p-3 rounded-lg hover:bg-slate-200 dark:hover:bg-zinc-800 border border-slate-200 dark:border-grayBorder flex items-center justify-between group relative">
-                        <!-- Clicking the name now simply opens the chat -->
-                        <span onclick="selectConversation('${c.id}')" class="chat-name-display cursor-pointer flex-1">${c.name}</span>
+                        <span onclick="selectConversation('${c.id}')" class="chat-name-display cursor-pointer flex-1">${safeName.innerHTML}</span>
                         
-                        <!-- Hidden input: No border, matches background -->
                         <input type="text" class="chat-name-input hidden flex-1 p-1 rounded bg-transparent outline-none text-sm" 
                                value="${c.name}" 
                                data-conv-id="${c.id}" 
@@ -626,7 +618,8 @@ async function showGroupChatList(groupName) {
                                ✏️
                         </button>
                     </div>
-                `).join('')}
+                `;
+                }).join('')}
             </div>
         </div>
     `;
@@ -662,11 +655,9 @@ async function saveEditChatName(inputElement) {
         }
     }
     
-    input.classList.add('hidden');
+    inputElement.classList.add('hidden');
     span.classList.remove('hidden');
 }
-
-
 
 function toggleGroupArrow(groupName) {
     const group = document.getElementById(`group-${groupName}`);
@@ -888,6 +879,7 @@ async function selectConversation(id) {
     messages.forEach(m => {
         const msgDiv = appendMessage(m.role, m.content);
         const contentDiv = msgDiv.contentDiv;
+        // Remove thinking tags and render markdown
         const finalContent = m.role === 'assistant' 
             ? m.content.replace(/<thinking>[\s\S]*?<\/thinking>/, '').trim()
             : m.content;
@@ -937,7 +929,6 @@ function newChat() {
     loadConversations();
 }
 
-
 function appendMessage(role, content) {
     const container = document.getElementById('chat-container');
     const div = document.createElement('div');
@@ -948,7 +939,7 @@ function appendMessage(role, content) {
     let finalContent = content;
     
     if (role === 'assistant') {
-        const thinkingMatch = content.match(/<thinking>([\s\्स]*?)<\/thinking>/);
+        const thinkingMatch = content.match(/<thinking>([\s\S]*?)<\/thinking>/);
         thinking = thinkingMatch ? thinkingMatch[1].trim() : null;
         finalContent = content.replace(/<thinking>[\s\S]*?<\/thinking>/, '').trim();
     }
@@ -968,7 +959,6 @@ function appendMessage(role, content) {
 
             <div id="${messageId}" class="markdown-content prose prose-slate dark:prose-invert max-w-none">${finalContent}</div>
             
-            <!-- Action Buttons: Always visible for assistant, hidden by default, shown on group hover -->
             <div class="absolute top-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                 ${role === 'assistant' ? 
                     `<button id="speak-btn-${messageId}" onclick="speakMessage('${messageId}')" class="msg-action-btn text-xs px-2 py-1 rounded bg-black/20 hover:bg-black/40">🔊</button>` : '' 
@@ -983,7 +973,6 @@ function appendMessage(role, content) {
     const contentDiv = div.querySelector(`#${messageId}`);
     return {element: div, contentDiv: contentDiv, finalContent: finalContent};
 }
-
 
 function toggleThinking(button) {
     const content = button.parentElement.querySelector('.thinking-content');
@@ -1001,23 +990,16 @@ function copyToClipboard(elementId) {
 
 function handleDragOver(event) {
     event.preventDefault();
-    event.stopPropagation();
-    event.target.style.backgroundColor = '#e0e7ff';
-    event.target.style.borderColor = '#6366f1';
+    event.target.classList.add('over');
 }
 
 function handleDragLeave(event) {
-    event.preventDefault();
-    event.stopPropagation();
-    event.target.style.backgroundColor = '';
-    event.target.style.borderColor = '';
+    event.target.classList.remove('over');
 }
 
 function handleDrop(event) {
     event.preventDefault();
-    event.stopPropagation();
-    event.target.style.backgroundColor = '';
-    event.target.style.borderColor = '';
+    event.target.classList.remove('over');
     
     const files = event.dataTransfer.files;
     if (files.length > 0) {
@@ -1039,6 +1021,18 @@ async function handleFileUpload(event) {
     const isImage = file.type.startsWith('image/');
     const isText = ['text/plain', 'text/markdown'].includes(file.type);
     const isPdf = file.type === 'application/pdf';
+
+    const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
+    const MAX_TEXT_SIZE = 5 * 1024 * 1024;
+
+    if (isImage && file.size > MAX_IMAGE_SIZE) {
+        alert('Image must be smaller than 10 MB');
+        return;
+    }
+    if ((isText || isPdf) && file.size > MAX_TEXT_SIZE) {
+        alert('File must be smaller than 5 MB');
+        return;
+    }
 
     if (isImage) {
         const reader = new FileReader();
@@ -1224,64 +1218,87 @@ async function sendMessage() {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let msgObj = appendMessage('assistant', '');
-        let aiMsgDiv = msgObj.element;
-        let contentDiv = msgObj.contentDiv;
-        
+        const contentDiv = msgObj.contentDiv;
         let fullText = "";
-        while (true) {
-            const { value, done } = await reader.read();
-            if (done) break;
-            const chunk = decoder.decode(value);
-            fullText += chunk;
-            
-            const thinkingMatch = fullText.match(/<thinking>([\s\S]*?)<\/thinking>/);
-            const thinkingText = thinkingMatch ? thinkingMatch[1].trim() : null;
-            const finalText = fullText.replace(/<thinking>[\s\S]*?<\/thinking>/, '').trim();
-            
-            contentDiv.textContent = finalText || 'Thinking...';
-            document.getElementById('chat-container').scrollTop = document.getElementById('chat-container').scrollHeight;
-        }
-        
-        const thinkingMatch = fullText.match(/<thinking>([\s\S]*?)<\/thinking>/);
-        const finalContent = fullText.replace(/<thinking>[\s\S]*?<\/thinking>/, '').trim();
-        
-        contentDiv.innerHTML = marked.parse(finalContent);
-        
-        aiMsgDiv.querySelectorAll('pre').forEach((pre) => {
-            if (!pre.querySelector('.copy-btn-code')) {
-                const code = pre.querySelector('code');
-                const copyBtn = document.createElement('button');
-                copyBtn.className = 'copy-btn-code absolute top-2 right-2 text-xs px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-white opacity-0 hover:opacity-100 transition-opacity';
-                copyBtn.textContent = 'Copy';
-                copyBtn.onclick = () => {
-                    const text = code ? code.innerText : pre.innerText;
-                    navigator.clipboard.writeText(text).then(() => {
-                        const orig = copyBtn.textContent;
-                        copyBtn.textContent = 'Copied!';
-                        setTimeout(() => copyBtn.textContent = orig, 2000);
-                    });
-                };
-                pre.style.position = 'relative';
-                pre.appendChild(copyBtn);
+        let buffer = "";
+        let done = false;
+
+        while (!done) {
+            const { value, done: streamDone } = await reader.read();
+
+            if (streamDone) break;
+
+            buffer += decoder.decode(value, { stream: true });
+
+            const events = buffer.split("\n\n");
+            buffer = events.pop() || "";
+
+            for (const event of events) {
+
+                if (event.includes("event: error")) {
+                    const errorLine = event
+                        .split("\n")
+                        .find(line => line.startsWith("data:"));
+
+                    contentDiv.innerHTML =
+                        `<div class="text-red-500">
+                            Error: ${errorLine?.slice(5) || "Unknown error"}
+                        </div>`;
+
+                    done = true;
+                    break;
+                }
+                if (event.includes("data: [DONE]")) {
+                    done = true;
+                    break;
+                }
+                const dataLine = event
+                    .split("\n")
+                    .find(line => line.startsWith("data:"));
+                if (dataLine) {
+                    // IMPORTANT: do not add spaces/newlines here
+                    const chunk = dataLine.substring(5);
+                    fullText += chunk;
+                    contentDiv.textContent = fullText;
+                    document.getElementById('chat-container').scrollTop =
+                        document.getElementById('chat-container').scrollHeight;
+                }
             }
-        });
-        
-        aiMsgDiv.querySelectorAll('pre code').forEach((el) => { hljs.highlightElement(el); });
-        
-        if (window.renderMathInElement) {
-            renderMathInElement(contentDiv, { delimiters: [
-                {left: '$$', right: '$$', display: true},
-                {left: '$', right: '$', display: false},
-                {left: '\\(', right: '\\)', display: false},
-                {left: '\\[', right: '\\]', display: true}
-            ]});
         }
         
-        document.getElementById('chat-container').scrollTop = document.getElementById('chat-container').scrollHeight;
-        await loadConversations();
+        if (fullText) {
+            const finalContent = fullText.replace(/<thinking>[\s\S]*?<\/thinking>/, '').trim();
+            contentDiv.innerHTML = marked.parse(finalContent);
+            contentDiv.querySelectorAll('pre').forEach((pre) => {
+                if (!pre.querySelector('.copy-btn-code')) {
+                    const code = pre.querySelector('code');
+                    const copyBtn = document.createElement('button');
+                    copyBtn.className = 'copy-btn-code absolute top-2 right-2 text-xs px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-white opacity-0 hover:opacity-100 transition-opacity';
+                    copyBtn.textContent = 'Copy';
+                    copyBtn.onclick = () => {
+                        const text = code ? code.innerText : pre.innerText;
+                        navigator.clipboard.writeText(text);
+                    };
+                    pre.style.position = 'relative';
+                    pre.appendChild(copyBtn);
+                }
+            });
+            contentDiv.querySelectorAll('pre code').forEach((el) => { hljs.highlightElement(el); });
+            if (window.renderMathInElement) {
+                renderMathInElement(contentDiv, { delimiters: [
+                    {left: '$$', right: '$$', display: true},
+                    {left: '$', right: '$', display: false},
+                    {left: '\\(', right: '\\)', display: false},
+                    {left: '\\[', right: '\\]', display: true}
+                ]});
+            }
+        }
+
         updateTokenCounter();
     } catch (error) {
-        appendMessage('assistant', `Error: ${error.message}`);
+        if (error.name !== 'AbortError') {
+            console.error('Error:', error);
+        }
     } finally {
         isStreaming = false;
         sendBtn.disabled = false;
@@ -1311,10 +1328,6 @@ async function createNewChatInGroup(groupName) {
     newChat();
 }
 
-
-
-// ---------- More / Hub Modal ----------
-
 function toggleHub(open) {
   const modal = document.getElementById('more-modal');
   if (modal) {
@@ -1326,29 +1339,11 @@ function toggleHub(open) {
   }
 }
 
-// 1. Define your modules here. 
-// 'url' is for new pages, 'action' is for internal JS functions (like opening a modal)
 const AppModules = {
-    "documentation": { 
-        url: "/documentation", 
-        label: "Documentation", 
-        icon: "📚" 
-    },
-    "voice-chat": { 
-        url: "/voice", 
-        label: "Voice Chat", 
-        icon: "🎤" 
-    },
-    "playground": { 
-        url: "/playground", 
-        label: "Playground", 
-        icon: "🧪" 
-    },
-    "code-gen": { 
-        url: "/codegen", 
-        label: "Code Generator", 
-        icon: "💻" 
-    }
+    "documentation": { url: "/documentation", label: "Documentation", icon: "📚" },
+    "voice-chat":    { url: "/voice",         label: "Voice Chat",   icon: "🎤" },
+    "playground":    { url: "/playground",    label: "Playground",   icon: "🧪" },
+    "code-gen":      { url: "/codegen",       label: "Code Gen",     icon: "💻" }
 };
 
 function navigateToModule(moduleId, event) {
@@ -1367,6 +1362,15 @@ function navigateToModule(moduleId, event) {
     }
 }
 
+function showToast(message, type = 'error') {
+    const toast = document.createElement('div');
+    toast.className = `fixed top-4 right-4 p-4 rounded-md shadow-lg text-white z-50 transition-all duration-300 ${
+        type === 'error' ? 'bg-red-500' : 'bg-green-500'
+    }`;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(() => { toast.remove(); }, 5000);
+}
 
 window.onload = async () => {
     if (sidebarCollapsed) {
@@ -1380,7 +1384,6 @@ window.onload = async () => {
     if (currentConvId) {
     await selectConversation(currentConvId);
     } else {
-    // No saved conversation – try loading the latest one
     const convs = await (await fetch('/conversations')).json();
     if (convs.length > 0) {
         const latest = convs.reduce((prev, curr) =>
@@ -1395,12 +1398,18 @@ window.onload = async () => {
     }
     
     await loadConversations();
-    await initMic();
+    if (webSearchEnabled) {
+        document.getElementById('web-search-btn').classList.add('active');
+    }
+
+    if (currentSystemPrompt) {
+        document.getElementById('system-prompt-btn').textContent = `Behavior: ${currentSystemPrompt}`;
+    }
     
     document.addEventListener('click', (e) => {
         const contextModal = document.getElementById('context-modal');
         const promptDropdown = document.getElementById('system-prompt-dropdown');
-        const moreModal = document.getElementById('more-modal'); // Add this
+        const moreModal = document.getElementById('more-modal');
 
         if (!e.target.closest('[onclick*="toggleContext"]') && !e.target.closest('#context-modal')) {
             contextModal.classList.add('hidden');
@@ -1408,7 +1417,6 @@ window.onload = async () => {
         if (!e.target.closest('[onclick*="toggleSystemPrompt"]') && !e.target.closest('#system-prompt-dropdown')) {
             promptDropdown.classList.add('hidden');
         }
-        // Close more-modal if clicking outside of it and not on the "More" button
         if (!e.target.closest('[onclick*="toggleHub"]') && !e.target.closest('#more-modal')) {
             moreModal.classList.add('hidden');
         }

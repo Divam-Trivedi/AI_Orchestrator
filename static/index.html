@@ -51,12 +51,12 @@
 </head>
 <body class="bg-white dark:bg-blackBg text-slate-900 dark:text-zinc-100 h-screen flex overflow-hidden transition-colors duration-200">
 
-    <aside id="sidebar" class="w-64 bg-slate-100 dark:bg-grayPanel flex flex-col border-r border-slate-200 dark:border-grayBorder transition-all duration-300">
+    <aside id="sidebar" class="w-64 overflow-hidden bg-slate-100 dark:bg-grayPanel flex flex-col border-r border-slate-200 dark:border-grayBorder transition-all duration-300">
         <div class="p-4 space-y-2">
             <button onclick="newChat()" class="w-full py-2 px-4 bg-accent text-accentText rounded-lg font-bold hover:opacity-90 transition-opacity">+ New Chat</button>
             <button onclick="openCreateGroupModal()" class="w-full py-2 px-4 bg-slate-300 dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-lg font-bold hover:opacity-90 transition-opacity text-sm">+ Create Group</button>
         </div>
-        <div id="history-list" class="flex-1 overflow-y-auto custom-scrollbar px-2 space-y-1"></div>
+        <div id="history-list" class="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar px-2 space-y-1"></div>
 
         <div class="p-4 border-t border-slate-200 dark:border-grayBorder flex flex-col gap-2">
             <button onclick="toggleSettings(true)" class="flex items-center gap-2 text-sm opacity-70 hover:opacity-100">⚙️ API Keys Control</button>

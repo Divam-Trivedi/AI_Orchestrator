@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Orchestrator – Documentation</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        blackBg: '#000000',
+                        grayPanel: '#121212',
+                        grayBorder: '#262626',
+                        accent: '#ffffff',
+                        accentText: '#000000'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+        .doc-content h2 { font-size: 1.5rem; font-weight: 700; margin-top: 2rem; margin-bottom: 0.5rem; }
+        .doc-content h3 { font-size: 1.25rem; font-weight: 600; margin-top: 1.5rem; margin-bottom: 0.5rem; }
+        .doc-content p, .doc-content li { line-height: 1.7; }
+        .doc-content ul { list-style-type: disc; margin-left: 1.5rem; }
+        .doc-content code { background: rgba(0,0,0,0.1); padding: 0.2rem 0.4rem; border-radius: 0.25rem; font-size: 0.9em; }
+        .dark .doc-content code { background: rgba(255,255,255,0.1); }
+    </style>
+</head>
+<body class="bg-white dark:bg-blackBg text-zinc-900 dark:text-zinc-100 min-h-screen transition-colors duration-200">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 py-8">
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-8">
+            <a href="/" class="text-sm opacity-70 hover:opacity-100">&larr; Back to Chat</a>
+            <button onclick="toggleTheme()" class="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-zinc-800" title="Toggle theme">🌓</button>
+        </div>
+
+        <h1 class="text-3xl font-bold mb-6">AI Orchestrator Documentation</h1>
+
+        <!-- Tabs -->
+        <div class="flex gap-4 mb-8">
+            <button onclick="showSection('technical')" id="tab-technical" class="px-4 py-2 rounded-lg font-bold text-sm bg-accent text-accentText hover:opacity-90 transition-opacity">Technical Overview</button>
+            <button onclick="showSection('nontechnical')" id="tab-nontechnical" class="px-4 py-2 rounded-lg font-bold text-sm bg-slate-200 dark:bg-zinc-800 hover:opacity-90 transition-opacity">User Guide</button>
+        </div>
+
+        <!-- Technical Content -->
+        <div id="section-technical" class="doc-content custom-scrollbar">
+            <h2>Architecture at a Glance</h2>
+            <p>The AI Orchestrator is a self‑hosted, multi‑provider AI frontend built with <strong>FastAPI</strong> (Python) and a vanilla JavaScript UI. It acts as a middleware between the user and various LLM providers (OpenAI, Anthropic, Ollama, DeepSeek, Gemini), adding advanced features like context windowing, web search, and system prompts.</p>
+
+            <h2>Backend (FastAPI)</h2>
+            <ul>
+                <li><strong>Provider pool</strong> – single <code>ProviderPool</code> class reuses HTTP connections via <code>httpx</code>. Each provider (OpenAI, Anthropic, Ollama, DeepSeek, Gemini) implements the <code>BaseProvider</code> interface.</li>
+                <li><strong>Database</strong> – SQLite (WAL mode) via <code>database.py</code>. Tables: <code>settings</code>, <code>conversations</code>, <code>messages</code>, <code>system_prompts</code>, <code>groups</code>.</li>
+                <li><strong>Endpoints</strong> – RESTful routes for chat (<code>/chat</code>), history, settings, system prompts, group management, web search, health, and voice transcription.</li>
+                <li><strong>Streaming</strong> – Chat responses are streamed using <code>StreamingResponse</code> with async generators, supporting real‑time token display.</li>
+                <li><strong>Context window control</strong> – Three modes: <code>all</code>, <code>last_n</code>, <code>first_m_last_n</code>. Applied server‑side before sending to the LLM.</li>
+                <li><strong>Web search</strong> – DuckDuckGo integration via <code>/search</code> endpoint injects results into the last user message.</li>
+                <li><strong>Vision</strong> – Detects vision‑capable models and formats images per provider spec.</li>
+                <li><strong>Voice</strong> – New <code>/voice-models</code> and <code>/voice/transcribe</code> endpoints. Supports OpenAI Whisper and browser Web Speech API.</li>
+            </ul>
+
+            <h2>Frontend (Vanilla JS + Tailwind)</h2>
+            <ul>
+                <li><strong>Dynamic UI</strong> – Conversations, groups, model selector, token bar, context preview, system prompt presets.</li>
+                <li><strong>Rich rendering</strong> – Markdown (<code>marked.js</code>), code highlighting (<code>highlight.js</code>), KaTeX for math.</li>
+                <li><strong>File support</strong> – Drag & drop images/text/PDF; PDF extraction with <code>pdf.js</code>.</li>
+                <li><strong>Mic button</strong> – Speech‑to‑text via browser or backend Whisper, with right‑click model selector.</li>
+                <li><strong>Modular tabs</strong> – “More” hub can open external pages like this documentation using modular routing.</li>
+            </ul>
+
+            <h2>Key Files</h2>
+            <ul>
+                <li><code>main.py</code> – server, routes, startup</li>
+                <li><code>providers.py</code> – LLM provider classes + transcription</li>
+                <li><code>database.py</code> – SQLite operations</li>
+                <li><code>static/index.html</code> – main UI</li>
+                <li><code>static/script.js</code> – main logic</li>
+                <li><code>static/SpeechToText.js</code> – voice input module</li>
+                <li><code>static/style.css</code> – custom styles</li>
+            </ul>
+        </div>
+
+        <!-- Non‑Technical Content -->
+        <div id="section-nontechnical" class="doc-content custom-scrollbar hidden">
+            <h2>What is this?</h2>
+            <p>This application lets you chat with different AI models (like ChatGPT, Claude, Gemini, and more) from one single place. You control your own API keys, so you pay only for what you use, and your data stays on your machine.</p>
+
+            <h2>How to Get Started</h2>
+            <h3>1. Get an API Key</h3>
+            <p>API keys are like passwords that let the app talk to the AI provider. Here’s how to get them from popular services:</p>
+            <ul>
+                <li><strong>OpenAI</strong> – Go to <a href="https://platform.openai.com/api-keys" target="_blank" class="text-blue-600 dark:text-blue-400 underline">platform.openai.com/api-keys</a>, create a new key, and copy it.</li>
+                <li><strong>Anthropic (Claude)</strong> – Visit <a href="https://console.anthropic.com/keys" target="_blank" class="text-blue-600 dark:text-blue-400 underline">console.anthropic.com/keys</a> and generate a key.</li>
+                <li><strong>DeepSeek</strong> – Go to <a href="https://platform.deepseek.com/api_keys" target="_blank" class="text-blue-600 dark:text-blue-400 underline">platform.deepseek.com/api_keys</a> and create one.</li>
+                <li><strong>Google Gemini</strong> – Obtain a key from <a href="https://aistudio.google.com/apikey" target="_blank" class="text-blue-600 dark:text-blue-400 underline">Google AI Studio</a>.</li>
+                <li><strong>Ollama</strong> (local) – No API key needed; just install Ollama and make sure it’s running on <code>http://localhost:11434</code>.</li>
+            </ul>
+            <p><strong>What’s an API?</strong> Think of it as a waiter: you send a request (your message) to the provider’s kitchen, and the API brings back the AI’s reply. The API key is your ID card that allows you to enter.</p>
+
+            <h3>2. Add Your Key to the App</h3>
+            <ol>
+                <li>Click the <strong>⚙️ API Keys Control</strong> button in the left sidebar.</li>
+                <li>Click <strong>+ Add Provider</strong> and choose the provider (e.g., OpenAI).</li>
+                <li>Paste your API key into the <strong>API Key / Endpoint</strong> field.</li>
+                <li>Add models you want to use (e.g., <code>gpt-4o</code>, <code>gpt-4o-mini</code>).</li>
+                <li>(Optional) Add voice models like <code>whisper-1</code> to enable speech‑to‑text.</li>
+                <li>Click <strong>Save Configuration</strong>.</li>
+            </ol>
+
+            <h3>3. Start Chatting</h3>
+            <ul>
+                <li>Select a model from the dropdown at the top.</li>
+                <li>Type your message and press Enter (or click the send button).</li>
+                <li>To use voice input, click the 🎤 mic button near the input area. Right‑click it to choose the speech‑to‑text method.</li>
+                <li>Attach images or PDFs by dragging them into the text box or using the paperclip button.</li>
+                <li>Toggle <strong>Web Search</strong> (🔍) to let the AI see recent web results.</li>
+                <li>Adjust the context window size to control how much chat history is sent.</li>
+                <li>Pick a <strong>System Prompt</strong> (like “Programmer” or “Teacher”) from the Behavior menu to change how the AI responds.</li>
+            </ul>
+
+            <h2>Costs & Privacy</h2>
+            <p><strong>You pay only for what you use.</strong> Each provider charges a small amount per token (roughly a few cents per thousand words). All processing happens via your own API key, so the providers see your messages, not us. Your chat history stays locally on your computer in a database file (<code>chat_history.db</code>).</p>
+            <p>To estimate cost:</p>
+            <ul>
+                <li>OpenAI: ~$0.01–0.03 per message with GPT‑4o.</li>
+                <li>Anthropic: similar pricing for Claude.</li>
+                <li>DeepSeek: significantly cheaper (~$0.001 per message).</li>
+                <li>Ollama: free (runs on your own hardware).</li>
+            </ul>
+
+            <h2>Grouping Conversations</h2>
+            <ul>
+                <li>Click <strong>+ Create Group</strong> in the sidebar to organise chats.</li>
+                <li>Drag & drop chats into groups by right‑clicking a conversation and selecting a group.</li>
+                <li>Rename or delete groups via the same menu.</li>
+            </ul>
+
+            <h2>Custom System Prompts</h2>
+            <p>You can create your own AI behaviour presets (like “Lawyer”, “Doctor”) from the Behavior menu. These are saved locally and only affect your prompt style.</p>
+
+            <h2>Need Help?</h2>
+            <p>Check the technical documentation tab for developer details. For further assistance, look inside the project’s <code>README.md</code> (if available) or open an issue on the repository.</p>
+        </div>
+    </div>
+
+    <script>
+        // Tab switching
+        function showSection(section) {
+            document.getElementById('section-technical').classList.add('hidden');
+            document.getElementById('section-nontechnical').classList.add('hidden');
+            document.getElementById('tab-technical').classList.remove('bg-accent', 'text-accentText');
+            document.getElementById('tab-technical').classList.add('bg-slate-200', 'dark:bg-zinc-800');
+            document.getElementById('tab-nontechnical').classList.remove('bg-accent', 'text-accentText');
+            document.getElementById('tab-nontechnical').classList.add('bg-slate-200', 'dark:bg-zinc-800');
+
+            if (section === 'technical') {
+                document.getElementById('section-technical').classList.remove('hidden');
+                document.getElementById('tab-technical').classList.add('bg-accent', 'text-accentText');
+                document.getElementById('tab-technical').classList.remove('bg-slate-200', 'dark:bg-zinc-800');
+            } else {
+                document.getElementById('section-nontechnical').classList.remove('hidden');
+                document.getElementById('tab-nontechnical').classList.add('bg-accent', 'text-accentText');
+                document.getElementById('tab-nontechnical').classList.remove('bg-slate-200', 'dark:bg-zinc-800');
+            }
+        }
+
+        // Theme toggle (dark/light)
+        function toggleTheme() {
+            document.documentElement.classList.toggle('dark');
+        }
+
+        // Detect system preference and default to dark
+        if (!localStorage.getItem('theme')) {
+            if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+        } else {
+            if (localStorage.getItem('theme') === 'dark') document.documentElement.classList.add('dark');
+            else document.documentElement.classList.remove('dark');
+        }
+
+        document.querySelector('button[onclick="toggleTheme()"]').addEventListener('click', () => {
+            const isDark = document.documentElement.classList.contains('dark');
+            localStorage.setItem('theme', isDark ? 'dark' : 'light');
+        });
+    </script>
+</body>
+</html>

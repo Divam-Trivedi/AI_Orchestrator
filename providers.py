@@ -157,7 +157,10 @@ class OpenAIProvider(BaseProvider):
         # Build messages with system prompt as first message if provided
         request_messages = messages
         if system_prompt:
-            request_messages = [{"role": "user", "content": system_prompt}] + messages
+            request_messages = [
+                {"role": "system", "content": system_prompt},
+                *messages
+            ]
         
         payload = {
             "model": model,
@@ -173,12 +176,13 @@ class OpenAIProvider(BaseProvider):
         
         if "gpt-5" in model.lower():
             payload["max_completion_tokens"] = min(max_tokens, 8192)
+            payload["reasoning"] = {"effort": "medium"}
         else:
             payload["max_tokens"] = min(max_tokens, 8192)
         
-        # Add cache control for prompt caching (ephemeral)
-        if system_prompt:
-            payload["messages"][0]["cache_control"] = {"type": "ephemeral"}
+        # # Add cache control for prompt caching (ephemeral)
+        # if system_prompt:
+        #     payload["messages"][0]["cache_control"] = {"type": "ephemeral"}
         
         try:
             logger.info(f"OpenAI: Streaming {model}")

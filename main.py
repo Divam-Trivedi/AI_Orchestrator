@@ -1,13 +1,12 @@
 import os
-import os
 import sqlite3
 from fastapi import FastAPI, HTTPException, Form, File, UploadFile
-from fastapi.responses import StreamingResponse, HTMLResponse, Response
+from fastapi.responses import StreamingResponse, HTMLResponse, Response, FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, Field, field_validator, validator
-from typing import List, Optional, Optional
+from typing import List, Optional
 from providers import get_provider, ProviderPool
 import database as db
 import uuid
@@ -32,9 +31,9 @@ ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:8000,http://loc
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=False,  # Changed from True for security
-    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],  # Specific methods only
-    allow_headers=["Content-Type"],  # Specific headers only
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type"],
 )
 
 # Initialize database
@@ -47,9 +46,9 @@ provider_pool = ProviderPool()
 
 class Message(BaseModel):
     role: str = Field(..., pattern="^(user|assistant|system)$")
-    content: str = Field(..., min_length=1, max_length=100000)
-    images: Optional[List[str]] = None  # Base64 encoded images
-    search_results: Optional[List[dict]] = None  # Web search results
+    content: str = Field(..., min_length=1, max_length=10_000_000)
+    images: Optional[List[str]] = Field(None, max_length=50)
+    search_results: Optional[List[dict]] = None
     
     @validator('content')
     def content_not_empty(cls, v):
@@ -71,7 +70,6 @@ class ChatRequest(BaseModel):
     def validate_messages(cls, v):
         if not v:
             raise ValueError('At least one message is required')
-        # Ensure last message is from user
         if v[-1].role != 'user':
             raise ValueError('Last message must be from user')
         return v
@@ -92,14 +90,16 @@ class ProviderConfig(BaseModel):
     def validate_api_key(cls, v, info):
         provider = info.data.get('provider')
         if provider in ['OpenAI', 'Anthropic', 'DeepSeek', 'Gemini'] and not v:
-            # Only require API key if either models or voice_models is non‑empty
             has_models = len(info.data.get('models', [])) > 0
             has_voice = len(info.data.get('voice_models', [])) > 0
             if has_models or has_voice:
                 raise ValueError(f"{provider} requires an API key")
         return v
 
-# ============ Request/Response Models ============
+class SystemPromptBody(BaseModel):
+    name: str
+    content: str
+    category: str = ""
 
 class ChatResponse(BaseModel):
     conversation_id: str
@@ -111,57 +111,18 @@ class ConversationInfo(BaseModel):
     created_at: str
     message_count: int = 0
 
-# ============ Endpoints ============
+# ============ Exception Handlers ============
 
-@app.get("/", response_class=HTMLResponse)
-async def get_index():
-    """Serve the main HTML interface"""
-    try:
-        with open("static/index.html", "r") as f:
-            return f.read()
-    except FileNotFoundError:
-        logger.error("static/index.html not found")
-        raise HTTPException(status_code=500, detail="UI file not found")
-    except Exception as e:
-        logger.error(f"Error reading static/index.html: {e}")
-        raise HTTPException(status_code=500, detail="Error loading UI")
-
-@app.post("/settings")
-async def save_setting(req: SettingRequest):
-    """Save a setting key-value pair"""
-    try:
-        # Validate provider_configs if it's being set
-        if req.key == "provider_configs":
-            try:
-                configs = json.loads(req.value)
-                # Validate each provider config
-                for cfg in configs:
-                    ProviderConfig(**cfg)
-            except json.JSONDecodeError:
-                raise HTTPException(status_code=400, detail="Invalid JSON in provider_configs")
-            except Exception as e:
-                raise HTTPException(status_code=400, detail=f"Invalid provider configuration: {str(e)}")
-        
-        db.set_setting(req.key, req.value)
-        logger.info(f"Setting saved: {req.key}")
-        return {"status": "success", "key": req.key}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error saving setting: {e}")
-        raise HTTPException(status_code=500, detail="Error saving setting")
-
-@app.get("/settings/{key}")
-async def get_setting(key: str):
-    """Retrieve a setting by key"""
-    try:
-        val = db.get_setting(key)
-        if val is None:
-            return {"value": None}
-        return {"value": val}
-    except Exception as e:
-        logger.error(f"Error retrieving setting {key}: {e}")
-        raise HTTPException(status_code=500, detail="Error retrieving setting")
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request, exc):
+    errors = exc.errors()
+    messages = []
+    for error in errors:
+        messages.append(f"{error['loc']}: {error['msg']}")
+    return JSONResponse(
+        status_code=422,
+        content={"detail": "Validation error", "errors": messages}
+    )
 
 # ============ Default System Prompts ============
 
@@ -209,6 +170,56 @@ def initialize_default_prompts():
     except Exception as e:
         logger.error(f"Error initializing default prompts: {e}")
 
+# ============ Main Endpoints ============
+
+@app.get("/", response_class=HTMLResponse)
+async def get_index():
+    """Serve the main HTML interface"""
+    try:
+        with open("static/index.html", "r") as f:
+            return f.read()
+    except FileNotFoundError:
+        logger.error("static/index.html not found")
+        raise HTTPException(status_code=500, detail="UI file not found")
+    except Exception as e:
+        logger.error(f"Error reading static/index.html: {e}")
+        raise HTTPException(status_code=500, detail="Error loading UI")
+
+@app.post("/settings")
+async def save_setting(req: SettingRequest):
+    """Save a setting key-value pair"""
+    try:
+        if req.key == "provider_configs":
+            try:
+                configs = json.loads(req.value)
+                for cfg in configs:
+                    ProviderConfig(**cfg)
+            except json.JSONDecodeError:
+                raise HTTPException(status_code=400, detail="Invalid JSON in provider_configs")
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Invalid provider configuration: {str(e)}")
+        
+        db.set_setting(req.key, req.value)
+        logger.info(f"Setting saved: {req.key}")
+        return {"status": "success", "key": req.key}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error saving setting: {e}")
+        raise HTTPException(status_code=500, detail="Error saving setting")
+
+@app.get("/settings/{key}")
+async def get_setting(key: str):
+    """Retrieve a setting by key"""
+    try:
+        val = db.get_setting(key)
+        if val is None:
+            return {"value": None}
+        return {"value": val}
+    except Exception as e:
+        logger.error(f"Error retrieving setting {key}: {e}")
+        raise HTTPException(status_code=500, detail="Error retrieving setting")
+
 @app.get("/system-prompts")
 async def list_system_prompts():
     """List all available system prompts"""
@@ -234,22 +245,20 @@ async def get_system_prompt(name: str):
         raise HTTPException(status_code=500, detail="Error retrieving system prompt")
 
 @app.post("/system-prompts")
-async def create_system_prompt(name: str, category: str, content: str):
-    """Create a new custom system prompt"""
+async def create_system_prompt(req: SystemPromptBody):
     try:
-        db.create_system_prompt(name, category, content, is_custom=1)
-        return {"status": "created", "name": name}
+        db.create_system_prompt(req.name, req.category or req.name, req.content, is_custom=1)
+        return {"status": "created", "name": req.name}
     except sqlite3.IntegrityError:
-        raise HTTPException(status_code=400, detail=f"System prompt '{name}' already exists")
+        raise HTTPException(status_code=400, detail=f"System prompt '{req.name}' already exists")
     except Exception as e:
         logger.error(f"Error creating system prompt: {e}")
         raise HTTPException(status_code=500, detail="Error creating system prompt")
 
 @app.put("/system-prompts/{name}")
-async def update_system_prompt(name: str, content: str):
-    """Update a system prompt"""
+async def update_system_prompt(name: str, req: SystemPromptBody):
     try:
-        db.update_system_prompt(name, content)
+        db.update_system_prompt(name, req.content)
         return {"status": "updated", "name": name}
     except Exception as e:
         logger.error(f"Error updating system prompt: {e}")
@@ -294,7 +303,7 @@ async def list_models():
         
         for p in configs:
             try:
-                ProviderConfig(**p)  # Validate config
+                ProviderConfig(**p)
                 for m in p.get('models', []):
                     all_models.append({
                         "model": m,
@@ -314,7 +323,6 @@ async def list_conversations():
     """List all conversations"""
     try:
         conversations = db.get_all_conversations()
-        # Add message count to each conversation
         for conv in conversations:
             try:
                 message_count = db.get_message_count(conv['id'])
@@ -395,7 +403,6 @@ async def move_conversation_to_group(conversation_id: str, group_name: str = Non
 async def get_history(conversation_id: str):
     """Get message history for a conversation"""
     try:
-        # Validate conversation exists
         if not db.conversation_exists(conversation_id):
             raise HTTPException(status_code=404, detail="Conversation not found")
         
@@ -411,7 +418,6 @@ async def get_history(conversation_id: str):
 async def chat(request: ChatRequest):
     """
     Send a message and get a streaming response.
-    Returns the conversation ID and streams the response content.
     """
     conv_id = request.conversation_id
     
@@ -439,11 +445,11 @@ async def chat(request: ChatRequest):
                 detail=f"Model '{request.model}' not configured. Please add it in settings."
             )
         
-        # Validate API key (Ollama doesn't need one)
+        # Validate API key
         api_key = current_config.get('api_key', '').strip()
         provider_name = current_config['provider']
         
-        if not api_key and provider_name not in ['Ollama', 'DeepSeek', 'Gemini']:
+        if not api_key and provider_name not in ['Ollama']:
             logger.error(f"Missing API key for provider {provider_name}")
             raise HTTPException(
                 status_code=400,
@@ -453,7 +459,6 @@ async def chat(request: ChatRequest):
         # Create new conversation if needed
         if not conv_id:
             conv_id = str(uuid.uuid4())
-            # Create conversation name from first user message
             first_message = next(m.content for m in request.messages if m.role == 'user')
             title = _generate_conversation_title(first_message)
             
@@ -464,7 +469,6 @@ async def chat(request: ChatRequest):
                 logger.error(f"Error creating conversation: {e}")
                 raise HTTPException(status_code=500, detail="Error creating conversation")
         else:
-            # Verify conversation exists
             if not db.conversation_exists(conv_id):
                 logger.warning(f"Conversation {conv_id} does not exist")
                 raise HTTPException(status_code=404, detail="Conversation not found")
@@ -477,62 +481,25 @@ async def chat(request: ChatRequest):
             logger.error(f"Error saving user message: {e}")
             raise HTTPException(status_code=500, detail="Error saving message")
         
-        # Handle web search if enabled
-        search_context = ""
-        if request.enable_web_search:
-            last_user_message = next(
-                (m for m in reversed(request.messages) if m.role == 'user'),
-                None
-            )
-            if last_user_message:
-                try:
-                    search_results = await web_search(last_user_message.content, num_results=3)
-                    if search_results['results']:
-                        search_context = "\n\n[Web Search Results]\n"
-                        for i, result in enumerate(search_results['results'], 1):
-                            search_context += f"{i}. {result['title']}\n   {result['snippet']}\n"
-                        logger.info(f"Web search injected {len(search_results['results'])} results")
-                except Exception as e:
-                    logger.warning(f"Web search failed: {e}")
-        
-        # Vision-capable models
-        vision_models = {'gpt-4o', 'gpt-4o-mini', 'claude-3-5-sonnet', 'claude-opus', 'llava'}
-        has_vision = any(vm in request.model.lower() for vm in vision_models)
-        
         # Prepare formatted messages
         formatted_messages = []
         for m in request.messages:
             msg_dict = {"role": m.role, "content": m.content}
-            
-            # Handle images
-            if hasattr(m, 'images') and m.images and has_vision:
-                from providers import format_message_with_images
-                msg_dict = format_message_with_images(msg_dict, provider_name)
-            elif hasattr(m, 'images') and m.images:
-                logger.warning(f"Model {request.model} doesn't support images. Ignoring.")
-            
-            # Append web search results to last user message
-            if m.role == 'user' and search_context and m == request.messages[-1]:
-                if isinstance(msg_dict['content'], str):
-                    msg_dict['content'] = msg_dict['content'] + search_context
-            
             formatted_messages.append(msg_dict)
         
         # Apply context window limit
         if request.context_mode == "last_n":
             formatted_messages = formatted_messages[-request.context_param_n:]
-            logger.info(f"Context mode: last_n ({request.context_param_n} messages). Sending {len(formatted_messages)} messages to AI")
+            logger.info(f"Context mode: last_n ({request.context_param_n} messages)")
         elif request.context_mode == "first_m_last_n":
             if len(formatted_messages) > (request.context_param_m + request.context_param_n):
                 formatted_messages = (
                     formatted_messages[:request.context_param_m] +
                     formatted_messages[-request.context_param_n:]
                 )
-            logger.info(f"Context mode: first_m_last_n (M={request.context_param_m}, N={request.context_param_n}). Sending {len(formatted_messages)} messages to AI")
-        else:
-            logger.info(f"Context mode: all. Sending {len(formatted_messages)} messages to AI")
+            logger.info(f"Context mode: first_m_last_n (M={request.context_param_m}, N={request.context_param_n})")
         
-        # Get provider instance (pooled/reused)
+        # Get provider instance
         try:
             provider_obj = provider_pool.get(provider_name)
         except Exception as e:
@@ -542,60 +509,53 @@ async def chat(request: ChatRequest):
         # Stream response
         async def event_generator():
             full_response = ""
-            error_occurred = False
-            
             try:
                 max_tokens = current_config.get('max_tokens', 4096)
-                
                 from providers import MODEL_OUTPUT_LIMITS
                 model_limit = MODEL_OUTPUT_LIMITS.get(request.model, 8192)
                 max_tokens = min(max_tokens, model_limit)
-                
+
                 async for chunk in provider_obj.stream_chat(
-                    request.model,
-                    formatted_messages,
-                    api_key,
-                    max_tokens,
+                    model=request.model,
+                    messages=formatted_messages,
+                    api_key=api_key,
+                    max_tokens=max_tokens,
                     system_prompt=request.system_prompt
                 ):
                     if chunk:
                         full_response += chunk
-                        yield chunk
+                        for line in chunk.splitlines():
+                            yield f"data: {line}\n"
+                            # yield f"data: {json.dumps(chunk)}\n\n"
+                        yield "\n"
                 
-                # Calculate tokens and save
-                input_tokens = sum(provider_obj.count_tokens(m["content"], request.model) for m in formatted_messages)
-                output_tokens = provider_obj.count_tokens(full_response, request.model)
-                total_tokens = input_tokens + output_tokens
-                
+                # Save assistant message
                 try:
                     db.save_message(conv_id, "assistant", full_response, request.model)
-                    db.update_token_count(conv_id, request.model, total_tokens)
-                    logger.info(f"Saved assistant response for conversation {conv_id} - {total_tokens} tokens")
                 except Exception as e:
-                    logger.error(f"Error saving assistant response: {e}")
-            
-            except Exception as e:
-                error_occurred = True
-                error_msg = str(e)
-                logger.error(f"Error during streaming from {provider_name}: {error_msg}")
-                yield f"\n\n[ERROR] Failed to get response from {provider_name}: {error_msg}"
+                    logger.error(f"Error saving assistant message: {e}")
                 
+                yield "data: [DONE]\n\n"
+            except Exception as e:
+                error_msg = str(e)
+                logger.error(f"Stream error: {error_msg}")
+                yield f"event: error\ndata: {error_msg}\n\n"
                 if full_response:
                     try:
-                        error_response = f"{full_response}\n\n[Incomplete due to error: {error_msg}]"
-                        db.save_message(conv_id, "assistant", error_response, request.model)
-                    except Exception as db_error:
-                        logger.error(f"Error saving error response: {db_error}")
+                        db.save_message(conv_id, "assistant", f"{full_response}\n\n[Incomplete: {error_msg}]", request.model)
+                    except Exception as save_err:
+                        logger.error(f"Error saving incomplete message: {save_err}")
         
         return StreamingResponse(
             event_generator(),
-            media_type="text/plain",
+            media_type="text/event-stream",
             headers={
                 "X-Conversation-ID": conv_id,
-                "Cache-Control": "no-cache, no-store, must-revalidate"
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive"
             }
         )
-    
+
     except HTTPException:
         raise
     except Exception as e:
@@ -617,6 +577,22 @@ async def update_conversation_name(conversation_id: str, name: str):
     except Exception as e:
         logger.error(f"Error updating conversation name: {e}")
         raise HTTPException(status_code=500, detail="Error updating conversation name")
+
+@app.delete("/conversations/{conversation_id}")
+async def delete_conversation(conversation_id: str):
+    """Delete a specific conversation"""
+    try:
+        if not db.conversation_exists(conversation_id):
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        
+        db.delete_conversation(conversation_id)
+        logger.info(f"Deleted conversation: {conversation_id}")
+        return {"status": "deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting conversation: {e}")
+        raise HTTPException(status_code=500, detail="Error deleting conversation")
 
 @app.post("/admin/cleanup-orphaned")
 async def cleanup_orphaned():
@@ -644,7 +620,6 @@ async def web_search(query: str, num_results: int = 5):
                     })
         except Exception as search_error:
             logger.warning(f"DuckDuckGo search error: {search_error}")
-            # Return empty results instead of crashing
             results = []
         
         logger.info(f"Web search completed for: {query} ({len(results)} results)")
@@ -652,7 +627,6 @@ async def web_search(query: str, num_results: int = 5):
     except Exception as e:
         logger.error(f"Error performing web search: {e}")
         raise HTTPException(status_code=500, detail="Web search failed")
-
 
 @app.get("/admin/stats")
 async def get_system_stats():
@@ -668,28 +642,11 @@ async def get_system_stats():
             "disk_percent": psutil.disk_usage('/').percent
         }
     except ImportError:
-        # psutil not installed, return basic stats
         db_size = db.get_database_size()
         return {"database": db_size, "note": "Install psutil for detailed stats"}
     except Exception as e:
         logger.error(f"Error getting stats: {e}")
         return {"error": str(e)}
-
-@app.delete("/conversations/{conversation_id}")
-async def delete_conversation(conversation_id: str):
-    """Delete a specific conversation"""
-    try:
-        if not db.conversation_exists(conversation_id):
-            raise HTTPException(status_code=404, detail="Conversation not found")
-        
-        db.delete_conversation(conversation_id)
-        logger.info(f"Deleted conversation: {conversation_id}")
-        return {"status": "deleted"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error deleting conversation: {e}")
-        raise HTTPException(status_code=500, detail="Error deleting conversation")
 
 @app.post("/settings/auto-cleanup")
 async def set_auto_cleanup(enabled: bool = True, days: int = 30):
@@ -701,132 +658,18 @@ async def set_auto_cleanup(enabled: bool = True, days: int = 30):
     except Exception as e:
         logger.error(f"Error configuring auto-cleanup: {e}")
         raise HTTPException(status_code=500, detail="Error configuring auto-cleanup")
-async def delete_conversation(conversation_id: str):
-    """Delete a conversation and all its messages"""
-    try:
-        # Validate conversation exists
-        if not db.conversation_exists(conversation_id):
-            raise HTTPException(status_code=404, detail="Conversation not found")
-        
-        db.delete_conversation(conversation_id)
-        logger.info(f"Deleted conversation {conversation_id}")
-        return Response(status_code=204)
-    
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error deleting conversation {conversation_id}: {e}")
-        raise HTTPException(status_code=500, detail="Error deleting conversation")
-
-# ============ Helper Functions ============
-
-def _generate_conversation_title(first_message: str) -> str:
-    """
-    Generate a conversation title from the first user message.
-    Takes first line, truncates to 50 chars, removes special chars.
-    """
-    try:
-        # Get first line
-        title = first_message.split('\n')[0].strip()
-        
-        # Truncate to 50 characters
-        if len(title) > 50:
-            title = title[:47] + "..."
-        
-        # Remove leading/trailing whitespace
-        title = title.strip()
-        
-        # Fallback if empty
-        if not title:
-            title = "New Conversation"
-        
-        return title
-    except Exception as e:
-        logger.warning(f"Error generating conversation title: {e}")
-        return "New Conversation"
-
-# ============ Startup/Shutdown ============
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize on startup"""
-    logger.info("AI Orchestrator starting up")
-    logger.info(f"Allowed origins: {ALLOWED_ORIGINS}")
-    initialize_default_prompts()
-    
-    # Start background cleanup task
-    asyncio.create_task(background_cleanup_task())
-
-async def background_cleanup_task():
-    """Run cleanup every 6 hours - remove orphaned messages only"""
-    while True:
-        try:
-            # Sleep for 6 hours
-            await asyncio.sleep(6 * 60 * 60)
-            
-            logger.info("Running scheduled orphaned message cleanup...")
-            db.cleanup_orphaned_messages()
-            logger.info("Orphaned message cleanup complete")
-        except Exception as e:
-            logger.error(f"Error in background cleanup: {e}")
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Cleanup on shutdown"""
-    logger.info("AI Orchestrator shutting down")
-    provider_pool.shutdown()
-
-# ============ Health Check ============
-
-@app.get("/health")
-async def health_check():
-    """Health check endpoint"""
-    try:
-        # Test database connection
-        db.get_setting("health_check")
-        return {
-            "status": "ok",
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        logger.error(f"Health check failed: {e}")
-        raise HTTPException(status_code=503, detail="Service unhealthy")
-
-@app.get("/conversations/{conversation_id}/tokens")
-async def get_conversation_tokens(conversation_id: str):
-    """Retrieve token breakdown for a specific conversation"""
-    try:
-        # Verify conversation exists
-        if not db.conversation_exists(conversation_id):
-            raise HTTPException(status_code=404, detail="Conversation not found")
-        
-        conv = db.get_conversation(conversation_id)
-        # tokens_used is already parsed into a dict by db.get_conversation
-        return {
-            "conversation_id": conversation_id,
-            "tokens_used": conv.get("tokens_used", {}) 
-        }
-    except Exception as e:
-        logger.error(f"Error retrieving tokens for {conversation_id}: {e}")
-        raise HTTPException(status_code=500, detail="Error retrieving token data")
-
-# ============ Voice Transcription ============
 
 @app.get("/voice-models")
 async def get_voice_models():
     try:
         config_str = db.get_setting("provider_configs")
-        print(f"DEBUG: Raw Config String: {config_str}")
         if not config_str:
             return []
         configs = json.loads(config_str)
         voice_models = []
         for p in configs:
-            print(f"DEBUG: Processing provider: {p.get('provider')}")
-            # We check if 'voice_models' key exists in the JSON
             for vm in p.get('voice_models', []):
                 voice_models.append({"model": vm, "provider": p['provider']})
-        print(f"DEBUG: Final Voice Model List: {voice_models}")
         return voice_models
     except Exception as e:
         logger.error(f"Error listing voice models: {e}")
@@ -857,12 +700,10 @@ async def transcribe_audio(model: str = Form(...), audio: UploadFile = File(...)
         logger.error(f"Transcription error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @app.get("/{module_name}")
 async def serve_module(module_name: str):
     """
     Dynamically serve HTML files based on the module name.
-    Example: /playground -> serves static/playground.html
     """
     module_files = {
         "documentation": "static/documentation.html",
@@ -875,8 +716,85 @@ async def serve_module(module_name: str):
     if file_path and os.path.exists(file_path):
         return FileResponse(file_path)
     
-    # If the module doesn't exist, return 404 or redirect to home
     raise HTTPException(status_code=404, detail="Module page not found")
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    try:
+        db.get_setting("health_check")
+        return {
+            "status": "ok",
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        raise HTTPException(status_code=503, detail="Service unhealthy")
+
+@app.get("/conversations/{conversation_id}/tokens")
+async def get_conversation_tokens(conversation_id: str):
+    """Retrieve token breakdown for a specific conversation"""
+    try:
+        if not db.conversation_exists(conversation_id):
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        
+        conv = db.get_conversation(conversation_id)
+        return {
+            "conversation_id": conversation_id,
+            "tokens_used": conv.get("tokens_used", {}) 
+        }
+    except Exception as e:
+        logger.error(f"Error retrieving tokens for {conversation_id}: {e}")
+        raise HTTPException(status_code=500, detail="Error retrieving token data")
+
+# ============ Helper Functions ============
+
+def _generate_conversation_title(first_message: str) -> str:
+    """
+    Generate a conversation title from the first user message.
+    """
+    try:
+        title = first_message.split('\n')[0].strip()
+        
+        if len(title) > 50:
+            title = title[:47] + "..."
+        
+        title = title.strip()
+        
+        if not title:
+            title = "New Conversation"
+        
+        return title
+    except Exception as e:
+        logger.warning(f"Error generating conversation title: {e}")
+        return "New Conversation"
+
+# ============ Startup/Shutdown ============
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize on startup"""
+    logger.info("AI Orchestrator starting up")
+    logger.info(f"Allowed origins: {ALLOWED_ORIGINS}")
+    initialize_default_prompts()
+    asyncio.create_task(background_cleanup_task())
+
+async def background_cleanup_task():
+    """Run cleanup every 6 hours"""
+    while True:
+        try:
+            await asyncio.sleep(6 * 60 * 60)
+            logger.info("Running scheduled orphaned message cleanup...")
+            db.cleanup_orphaned_messages()
+            logger.info("Orphaned message cleanup complete")
+        except Exception as e:
+            logger.error(f"Error in background cleanup: {e}")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup on shutdown"""
+    logger.info("AI Orchestrator shutting down")
+    provider_pool.shutdown()
 
 # ============ Run Application ============
 
